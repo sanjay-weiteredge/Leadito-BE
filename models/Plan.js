@@ -21,7 +21,7 @@ module.exports = (sequelize, DataTypes) => {
         price: {
             type: DataTypes.INTEGER,
             allowNull: false,
-            comment: 'Price in paise (INR × 100)',
+            comment: 'Price in INR (direct value, not paise)',
         },
         durationDays: {
             type: DataTypes.INTEGER,
@@ -31,6 +31,19 @@ module.exports = (sequelize, DataTypes) => {
         isActive: {
             type: DataTypes.BOOLEAN,
             defaultValue: true,
+        },
+        adBudget: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        expectedLeads: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        features: {
+            type: DataTypes.JSON,
+            allowNull: true,
+            comment: 'Array of feature objects',
         },
     }, {
         sequelize,

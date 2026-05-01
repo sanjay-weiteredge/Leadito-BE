@@ -16,7 +16,7 @@ exports.createOrder = async (req, res) => {
         if (!plan) return res.status(404).json({ message: 'Plan not found' });
 
         const options = {
-            amount: plan.price, // Already in Paise from the database
+            amount: plan.price * 100, // Convert direct INR from DB to Paise for Razorpay
             currency: 'INR',
             receipt: `receipt_plan_${planId}_user_${req.user.id}_${Date.now()}`,
         };
