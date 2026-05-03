@@ -15,6 +15,21 @@ exports.createOrder = async (req, res) => {
         const plan = await Plan.findByPk(planId);
         if (!plan) return res.status(404).json({ message: 'Plan not found' });
 
+        // Guard: Check for existing active subscription
+        const activeSub = await Subscription.findOne({
+            where: { userId: req.user.id, status: 'active' }
+        });
+
+        if (activeSub) {
+            if (activeSub.planId === parseInt(planId)) {
+                return res.status(400).json({
+                    message: 'You already have an active subscription for this plan.',
+                    expiryDate: activeSub.expiryDate
+                });
+            }
+            // If it's a different plan, we allow it (it will act as an upgrade/update)
+        }
+
         const options = {
             amount: plan.price * 100, // Convert direct INR from DB to Paise for Razorpay
             currency: 'INR',

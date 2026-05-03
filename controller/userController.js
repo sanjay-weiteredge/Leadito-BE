@@ -59,6 +59,27 @@ exports.getProfile = async (req, res) => {
             ],
         });
         if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // Auto-disable if expired
+        if (user.isActive && user.subscriptions && user.subscriptions.length > 0) {
+            const activeSub = user.subscriptions[0];
+            const expiryDate = new Date(activeSub.expiryDate);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            if (expiryDate < today) {
+                await user.update({ isActive: false });
+                user.isActive = false;
+
+                // Also update subscription status
+                await activeSub.update({ status: 'expired' });
+            }
+        } else if (user.isActive && (!user.subscriptions || user.subscriptions.length === 0)) {
+            // Safety check: isActive was true but no active sub found
+            await user.update({ isActive: false });
+            user.isActive = false;
+        }
+
         return res.json(user);
     } catch (err) {
         console.error('Get profile error:', err);

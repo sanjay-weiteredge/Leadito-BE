@@ -29,19 +29,29 @@ app.use((req, res) => {
 });
 
 async function startServer() {
-  try {
-    await sequelize.authenticate({ logging: false });
-    console.log('✅ Connection to the database has been established successfully.');
+  let retries = 5;
 
-    await sequelize.sync({ alter: true, logging: false });
-    console.log('✅ Database synchronized.');
+  while (retries) {
+    try {
+      await sequelize.authenticate({ logging: false });
+      console.log('✅ Connection to the database has been established successfully.');
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error('❌ Unable to connect to the database:', error);
-    process.exit(1);
+      await sequelize.sync({ alter: true, logging: false });
+      console.log('✅ Database synchronized.');
+
+      app.listen(PORT, () => {
+        console.log(`🚀 Server is running on port ${PORT}`);
+      });
+      return; // Exit loop on success
+    } catch (error) {
+      console.log(`❌ DB not ready, retrying... (${retries} retries left). Error: ${error.message}`);
+      retries--;
+      if (retries === 0) {
+        console.error('❌ Could not connect to the database after maximum retries.');
+        process.exit(1);
+      }
+      await new Promise(res => setTimeout(res, 5000)); // Wait 5 seconds
+    }
   }
 }
 
