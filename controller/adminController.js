@@ -481,13 +481,17 @@ exports.listAdsReports = async (req, res) => {
 
 exports.createAdsReport = async (req, res) => {
     try {
-        const { userId, month, ...metrics } = req.body;
+        const { userId, month, paymentStatus, ...metrics } = req.body;
         if (!userId || !month)
             return res.status(400).json({ message: 'userId and month are required' });
+
+        const user = await User.findByPk(userId);
+        const finalPaymentStatus = paymentStatus || (user && user.isActive ? 'paid' : 'pending');
 
         const report = await AdsReport.create({
             userId,
             month,
+            paymentStatus: finalPaymentStatus,
             updatedByAdmin: req.admin.id,
             ...metrics,
         });
