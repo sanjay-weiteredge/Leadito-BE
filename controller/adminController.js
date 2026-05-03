@@ -487,12 +487,20 @@ exports.createAdsReport = async (req, res) => {
 
         const user = await User.findByPk(userId);
         const finalPaymentStatus = paymentStatus || (user && user.isActive ? 'paid' : 'pending');
+        const finalStatus = metrics.status || 'published';
+        let finalWeekNumber = metrics.weekNumber;
+
+        if (metrics.reportType === 'weekly' && !finalWeekNumber) {
+            finalWeekNumber = 1;
+        }
 
         const report = await AdsReport.create({
             userId,
             month,
             paymentStatus: finalPaymentStatus,
             updatedByAdmin: req.admin.id,
+            status: finalStatus,
+            weekNumber: finalWeekNumber,
             ...metrics,
         });
 
