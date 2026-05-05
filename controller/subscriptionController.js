@@ -25,7 +25,7 @@ exports.createOrder = async (req, res) => {
         const isRenewal = activeSub && activeSub.planId === parseInt(planId);
 
         const options = {
-            amount: plan.price * 100, // INR to paise for Razorpay
+            amount: Math.round(plan.price * 100), // INR to paise for Razorpay
             currency: 'INR',
             receipt: `receipt_plan_${planId}_user_${req.user.id}_${Date.now()}`,
         };
@@ -38,6 +38,7 @@ exports.createOrder = async (req, res) => {
             amount: order.amount,
             currency: order.currency,
             planName: plan.name,
+            razorpayKey: process.env.RAZORPAY_KEY_ID,
             isRenewal,
             currentExpiryDate: isRenewal ? activeSub.expiryDate : null,
         });
