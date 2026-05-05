@@ -421,11 +421,18 @@ exports.listPlans = async (req, res) => {
 
 exports.createPlan = async (req, res) => {
     try {
-        const { name, price, durationDays } = req.body;
+        const { name, price, durationDays, adBudget, expectedLeads, features } = req.body;
         if (!name || price === undefined)
             return res.status(400).json({ message: 'name and price are required' });
 
-        const plan = await Plan.create({ name, price, durationDays: durationDays || 30 });
+        const plan = await Plan.create({
+            name,
+            price,
+            durationDays: durationDays || 30,
+            adBudget,
+            expectedLeads,
+            features
+        });
         return res.status(201).json(plan);
     } catch (err) {
         console.error('Create plan error:', err);
