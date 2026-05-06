@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controller/adminController');
 const adminAuth = require('../middleware/adminAuth');
+const { upload } = require('../utils/s3');
 
 router.post('/register', ctrl.register);
 router.post('/login', ctrl.login);
@@ -29,8 +30,8 @@ router.post('/services', ctrl.createService);
 router.patch('/services/:id', ctrl.updateService);
 router.delete('/services/:id', ctrl.deleteService);
 router.get('/videos', ctrl.listVideos);
-router.post('/videos', ctrl.createVideo);
-router.patch('/videos/:id', ctrl.updateVideo);
+router.post('/videos', upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), ctrl.createVideo);
+router.patch('/videos/:id', upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), ctrl.updateVideo);
 router.delete('/videos/:id', ctrl.deleteVideo);
 router.get('/testimonials', ctrl.listTestimonials);
 router.post('/testimonials', ctrl.createTestimonial);

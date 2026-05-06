@@ -1,6 +1,22 @@
 const { User, Subscription, Plan, Lead, LeadNote, AdsReport, Service, Video, Testimonial } = require('../models');
 const notifCtrl = require('./notificationController');
-const { uploadToS3 } = require('../utils/s3');
+const { uploadToS3, getSignedUrlForView, isS3Value } = require('../utils/s3');
+
+const signUrl = async (url) => {
+    if (url && isS3Value(url)) {
+        return await getSignedUrlForView(url);
+    }
+    return url;
+};
+
+const processUser = async (user) => {
+    if (!user) return null;
+    const userData = user.toJSON ? user.toJSON() : user;
+
+    userData.logoUrl = await signUrl(userData.logoUrl);
+
+    return userData;
+};
 
 exports.listServices = async (req, res) => {
     try {
@@ -8,7 +24,14 @@ exports.listServices = async (req, res) => {
             where: { isActive: true },
             order: [['order', 'ASC']]
         });
-        return res.json(services);
+
+        const processed = await Promise.all(services.map(async s => {
+            const data = s.get({ plain: true });
+            data.iconUrl = await signUrl(data.iconUrl);
+            return data;
+        }));
+
+        return res.json(processed);
     } catch (err) {
         console.error('List services error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -21,7 +44,15 @@ exports.listVideos = async (req, res) => {
             where: { isActive: true },
             order: [['createdAt', 'DESC']]
         });
-        return res.json(videos);
+
+        const processed = await Promise.all(videos.map(async v => {
+            const data = v.get({ plain: true });
+            data.videoUrl = await signUrl(data.videoUrl);
+            data.thumbnailUrl = await signUrl(data.thumbnailUrl);
+            return data;
+        }));
+
+        return res.json(processed);
     } catch (err) {
         console.error('List videos error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -34,7 +65,14 @@ exports.listTestimonials = async (req, res) => {
             where: { isActive: true },
             order: [['order', 'ASC'], ['createdAt', 'DESC']]
         });
-        return res.json(testimonials);
+
+        const processed = await Promise.all(testimonials.map(async t => {
+            const data = t.get({ plain: true });
+            data.avatarUrl = await signUrl(data.avatarUrl);
+            return data;
+        }));
+
+        return res.json(processed);
     } catch (err) {
         console.error('List testimonials error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -81,7 +119,8 @@ exports.getProfile = async (req, res) => {
             user.isActive = false;
         }
 
-        return res.json(user);
+        const processedUser = await processUser(user);
+        return res.json(processedUser);
     } catch (err) {
         console.error('Get profile error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -112,7 +151,8 @@ exports.updateProfile = async (req, res) => {
             logoUrl: logoUrl || user.logoUrl
         });
 
-        return res.json({ message: 'Profile updated successfully', user });
+        const processedUser = await processUser(user);
+        return res.json({ message: 'Profile updated successfully', user: processedUser });
     } catch (err) {
         console.error('Update profile error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -152,7 +192,8 @@ exports.onboardUser = async (req, res) => {
             'general'
         );
 
-        return res.json({ message: 'Onboarding completed successfully', user });
+        const processedUser = await processUser(user);
+        return res.json({ message: 'Onboarding completed successfully', user: processedUser });
     } catch (err) {
         console.error('Onboarding error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -177,7 +218,7 @@ exports.getPlans = async (req, res) => {
 
 exports.getAdsResults = async (req, res) => {
     try {
-        const { platform, type } = req.query; // platform: facebook/instagram, type: weekly/monthly
+        const { platform, type } = req.query; // platform: meta/facebook/instagram, type: weekly/monthly
 
         if (!req.user.isActive) {
             return res.json({
@@ -193,7 +234,7 @@ exports.getAdsResults = async (req, res) => {
                     revenue: 312000,
                     roi: 524,
                     closedRatio: 6.6,
-                    platform: platform || 'facebook',
+                    platform: platform || 'meta',
                     campaignStatus: 'active',
                     notes: [
                         'Campaign performance is exceeding benchmark by 15%.',
@@ -205,7 +246,12 @@ exports.getAdsResults = async (req, res) => {
         }
 
         let whereClause = { userId: req.user.id, status: 'published' };
-        if (platform) whereClause.platform = platform;
+        if (platform) {
+            whereClause.platform = platform;
+        } else {
+            whereClause.platform = 'meta';
+        }
+
         if (type) whereClause.reportType = type;
 
         const reports = await AdsReport.findAll({

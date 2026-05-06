@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { Admin, User, Subscription, Plan, AdsReport, Lead, Service, Video, Testimonial } = require('../models');
 const { Op } = require('sequelize');
 const notifCtrl = require('./notificationController');
+const { uploadToS3 } = require('../utils/s3');
 
 
 // ... other exports ...
@@ -70,9 +71,19 @@ exports.listVideos = async (req, res) => {
 
 exports.createVideo = async (req, res) => {
     try {
-        const { title, description, videoUrl, thumbnailUrl, isActive } = req.body;
-        if (!title || !videoUrl || !thumbnailUrl) {
-            return res.status(400).json({ message: 'Title, videoUrl, and thumbnailUrl are mandatory' });
+        let { title, description, videoUrl, thumbnailUrl, isActive } = req.body;
+
+        if (req.files) {
+            if (req.files.video) {
+                videoUrl = await uploadToS3(req.files.video[0], 'videos');
+            }
+            if (req.files.thumbnail) {
+                thumbnailUrl = await uploadToS3(req.files.thumbnail[0], 'videos');
+            }
+        }
+
+        if (!title || (!videoUrl && !req.files?.video) || (!thumbnailUrl && !req.files?.thumbnail)) {
+            return res.status(400).json({ message: 'Title, video (file or URL), and thumbnail (file or URL) are mandatory' });
         }
 
         const video = await Video.create({ title, description, videoUrl, thumbnailUrl, isActive });
@@ -88,7 +99,18 @@ exports.updateVideo = async (req, res) => {
         const video = await Video.findByPk(req.params.id);
         if (!video) return res.status(404).json({ message: 'Video not found' });
 
-        await video.update(req.body);
+        let updateData = { ...req.body };
+
+        if (req.files) {
+            if (req.files.video) {
+                updateData.videoUrl = await uploadToS3(req.files.video[0], 'videos');
+            }
+            if (req.files.thumbnail) {
+                updateData.thumbnailUrl = await uploadToS3(req.files.thumbnail[0], 'videos');
+            }
+        }
+
+        await video.update(updateData);
         return res.json(video);
     } catch (err) {
         console.error('Update video error:', err);

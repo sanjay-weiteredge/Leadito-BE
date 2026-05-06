@@ -1,6 +1,17 @@
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
-const { uploadToS3 } = require('../utils/s3');
+const { uploadToS3, getSignedUrlForView, isS3Value } = require('../utils/s3');
+
+const processUser = async (user) => {
+    if (!user) return null;
+    const userData = user.toJSON ? user.toJSON() : user;
+
+    if (userData.logoUrl && isS3Value(userData.logoUrl)) {
+        userData.logoUrl = await getSignedUrlForView(userData.logoUrl);
+    }
+
+    return userData;
+};
 
 const otpStore = new Map();
 
@@ -59,14 +70,10 @@ exports.verifyOtp = async (req, res) => {
             { expiresIn: '30d' }
         );
 
+        const processedUser = await processUser(user);
         return res.json({
             token,
-            user: {
-                id: user.id,
-                phone: user.phone,
-                isOnboarded: user.isOnboarded,
-                isActive: user.isActive,
-            },
+            user: processedUser,
             isNewUser: created,
         });
     } catch (err) {
@@ -110,23 +117,11 @@ exports.onboarding = async (req, res) => {
             { expiresIn: '30d' }
         );
 
+        const processedUser = await processUser(user);
         return res.json({
             message: 'Onboarding complete',
             token,
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                phone: user.phone,
-                businessName: user.businessName,
-                businessType: user.businessType,
-                businessAddress: user.businessAddress,
-                city: user.city,
-                state: user.state,
-                logoUrl: user.logoUrl,
-                isOnboarded: user.isOnboarded,
-                isActive: user.isActive,
-            },
+            user: processedUser,
         });
     } catch (err) {
         console.error('Onboarding error:', err);

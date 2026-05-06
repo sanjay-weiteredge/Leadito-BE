@@ -24,8 +24,8 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: true,
         },
         platform: {
-            type: DataTypes.ENUM('facebook', 'instagram', 'google', 'all'),
-            defaultValue: 'all',
+            type: DataTypes.ENUM('facebook', 'instagram', 'google', 'all', 'meta'),
+            defaultValue: 'meta',
         },
         reportType: {
             type: DataTypes.ENUM('monthly', 'weekly'),
