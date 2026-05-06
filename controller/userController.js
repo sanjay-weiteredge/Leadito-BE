@@ -1,5 +1,6 @@
 const { User, Subscription, Plan, Lead, LeadNote, AdsReport, Service, Video, Testimonial } = require('../models');
 const notifCtrl = require('./notificationController');
+const { uploadToS3 } = require('../utils/s3');
 
 exports.listServices = async (req, res) => {
     try {
@@ -89,7 +90,14 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
     try {
-        const { name, email, businessName, businessType, businessAddress, city, state, logoUrl } = req.body;
+        const { name, email, businessName, businessType, businessAddress, city, state } = req.body;
+        let logoUrl = req.body.logoUrl;
+
+        // If a file is uploaded, upload it to S3
+        if (req.file) {
+            logoUrl = await uploadToS3(req.file);
+        }
+
         const user = await User.findByPk(req.user.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
 
@@ -101,7 +109,7 @@ exports.updateProfile = async (req, res) => {
             businessAddress,
             city,
             state,
-            logoUrl
+            logoUrl: logoUrl || user.logoUrl
         });
 
         return res.json({ message: 'Profile updated successfully', user });
@@ -113,7 +121,14 @@ exports.updateProfile = async (req, res) => {
 
 exports.onboardUser = async (req, res) => {
     try {
-        const { name, email, businessName, businessType, businessAddress, city, state, logoUrl } = req.body;
+        const { name, email, businessName, businessType, businessAddress, city, state } = req.body;
+        let logoUrl = req.body.logoUrl;
+
+        // If a file is uploaded, upload it to S3
+        if (req.file) {
+            logoUrl = await uploadToS3(req.file);
+        }
+
         const user = await User.findByPk(req.user.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
 

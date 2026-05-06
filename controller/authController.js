@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
+const { uploadToS3 } = require('../utils/s3');
 
 const otpStore = new Map();
 
@@ -77,10 +78,16 @@ exports.verifyOtp = async (req, res) => {
 
 exports.onboarding = async (req, res) => {
     try {
-        const { name, email, businessName, businessType, businessAddress, city, state, logoUrl } = req.body;
-
+        const { name, email, businessName, businessType, businessAddress, city, state } = req.body;
         if (!name || !businessName || !businessType || !city)
             return res.status(400).json({ message: 'name, businessName, businessType, and city are required' });
+
+        let logoUrl = req.body.logoUrl;
+
+        // If a file is uploaded, upload it to S3
+        if (req.file) {
+            logoUrl = await uploadToS3(req.file);
+        }
 
         const user = await User.findByPk(req.user.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
@@ -93,7 +100,7 @@ exports.onboarding = async (req, res) => {
             businessAddress,
             city,
             state,
-            logoUrl,
+            logoUrl: logoUrl || user.logoUrl,
             isOnboarded: true
         });
 

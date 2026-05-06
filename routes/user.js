@@ -11,9 +11,11 @@ router.get('/testimonials', ctrl.listTestimonials);
 
 router.use(userAuth);
 
+const { upload } = require('../utils/s3');
+
 router.get('/user/profile', ctrl.getProfile);
-router.put('/user/profile', ctrl.updateProfile);
-router.post('/user/onboard', ctrl.onboardUser);
+router.put('/user/profile', upload.single('logo'), ctrl.updateProfile);
+router.post('/user/onboard', upload.single('logo'), ctrl.onboardUser);
 
 router.get('/ads-results', ctrl.getAdsResults);
 
