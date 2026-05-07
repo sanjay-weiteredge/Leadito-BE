@@ -271,8 +271,24 @@ exports.listUsers = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
         const offset = (page - 1) * limit;
+        const { isActive, search } = req.query;
+
+        const where = {};
+        if (isActive !== undefined && isActive !== '') {
+            where.isActive = (isActive === 'true' || isActive === true);
+        }
+
+        if (search) {
+            where[Op.or] = [
+                { name: { [Op.iLike]: `%${search}%` } },
+                { phone: { [Op.iLike]: `%${search}%` } },
+                { businessName: { [Op.iLike]: `%${search}%` } },
+                { city: { [Op.iLike]: `%${search}%` } }
+            ];
+        }
 
         const { count, rows } = await User.findAndCountAll({
+            where,
             attributes: ['id', 'name', 'phone', 'businessName', 'businessType', 'city', 'isOnboarded', 'isActive', 'createdAt'],
             order: [['createdAt', 'DESC']],
             limit,
