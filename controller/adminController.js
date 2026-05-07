@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { Admin, User, Subscription, Plan, AdsReport, Lead, Service, Video, Testimonial } = require('../models');
+const { Admin, User, Subscription, Plan, AdsReport, Lead, LeadNote, Service, Video, Testimonial } = require('../models');
 const { Op } = require('sequelize');
 const notifCtrl = require('./notificationController');
 const { uploadToS3, getSignedUrlForView, isS3Value } = require('../utils/s3');
@@ -587,7 +587,7 @@ exports.listLeads = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
         const offset = (page - 1) * limit;
-        const { userId, status, search } = req.query;
+        const { userId, status, search, filter, startDate: qStart, endDate: qEnd } = req.query;
 
         const where = {};
         if (userId && userId !== 'all') {
@@ -596,35 +596,59 @@ exports.listLeads = async (req, res) => {
         if (status && status !== 'all') {
             where.status = status;
         }
+
+        // Date Filtering
+        if (filter && filter !== 'All') {
+            const now = new Date();
+            if (filter === 'Daily') {
+                where.createdAt = { [Op.gte]: new Date(now.setHours(0, 0, 0, 0)) };
+            } else if (filter === 'Weekly') {
+                const startDate = new Date(now.setDate(now.getDate() - 7));
+                startDate.setHours(0, 0, 0, 0);
+                where.createdAt = { [Op.gte]: startDate };
+            } else if (filter === 'Monthly') {
+                const startDate = new Date(now.setMonth(now.getMonth() - 1));
+                startDate.setHours(0, 0, 0, 0);
+                where.createdAt = { [Op.gte]: startDate };
+            } else if (filter === 'Custom' && qStart && qEnd) {
+                const sDate = new Date(qStart);
+                sDate.setHours(0, 0, 0, 0);
+                const eDate = new Date(qEnd);
+                eDate.setHours(23, 59, 59, 999);
+                where.createdAt = { [Op.between]: [sDate, eDate] };
+            }
+        }
+
         if (search) {
             where[Op.or] = [
                 { name: { [Op.iLike]: `%${search}%` } },
-                { phone: { [Op.iLike]: `%${search}%` } },
-                { email: { [Op.iLike]: `%${search}%` } }
+                { phone: { [Op.iLike]: `%${search}%` } }
             ];
         }
 
         const { count, rows } = await Lead.findAndCountAll({
             where,
-            include: [{ model: User, as: 'user', attributes: ['id', 'name', 'phone', 'businessName'] }],
+            include: [
+                { model: User, as: 'user', attributes: ['id', 'name', 'phone', 'businessName'] },
+                { model: LeadNote, as: 'notes', separate: true, order: [['createdAt', 'DESC']] }
+            ],
             order: [['createdAt', 'DESC']],
             limit,
             offset
         });
 
-        // Global Metrics for Cards (Across all leads, or respect userId filter if applied)
-        const statsWhere = {};
-        if (userId && userId !== 'all') statsWhere.userId = userId;
-
+        // Metrics for Cards (Respect same filters)
         const statusCounts = await Lead.findAll({
-            where: statsWhere,
+            where,
             attributes: ['status', [Lead.sequelize.fn('COUNT', Lead.sequelize.col('id')), 'count']],
             group: ['status'],
             raw: true
         });
 
+        const totalLeads = await Lead.count({ where });
+
         const metrics = {
-            total: await Lead.count({ where: statsWhere }),
+            total: totalLeads,
             statusWise: {}
         };
 
