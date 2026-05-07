@@ -9,6 +9,8 @@ router.post('/login', ctrl.login);
 
 router.use(adminAuth);
 
+router.get('/stats', ctrl.getDashboardStats);
+
 router.get('/users', ctrl.listUsers);
 router.get('/users/:id', ctrl.getUser);
 router.patch('/users/:id/activate', ctrl.activateUser);
@@ -26,6 +28,7 @@ router.patch('/ads-reports/:id', ctrl.updateAdsReport);
 router.delete('/ads-reports/:id', ctrl.deleteAdsReport);
 
 router.get('/leads', ctrl.listLeads);
+router.get('/leads/:leadId/notes', ctrl.getLeadNotes);
 
 router.get('/services', ctrl.listServices);
 router.post('/services', ctrl.createService);
