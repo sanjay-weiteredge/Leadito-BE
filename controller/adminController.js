@@ -22,7 +22,8 @@ exports.getDashboardStats = async (req, res) => {
             revenueData,
             videoCount,
             testimonialCount,
-            serviceCount
+            serviceCount,
+            recentActiveUsers
         ] = await Promise.all([
             User.count(),
             Lead.count(),
@@ -37,7 +38,19 @@ exports.getDashboardStats = async (req, res) => {
             }),
             Video.count(),
             Testimonial.count(),
-            Service.count()
+            Service.count(),
+            User.findAll({
+                where: { isActive: true },
+                include: [{
+                    model: Subscription,
+                    as: 'subscriptions', // Verify alias
+                    where: { status: 'active' },
+                    required: false,
+                    include: [{ model: Plan, as: 'plan' }]
+                }],
+                order: [['updatedAt', 'DESC']],
+                limit: 5
+            })
         ]);
 
         return res.json({
@@ -48,7 +61,8 @@ exports.getDashboardStats = async (req, res) => {
             spent: parseFloat(revenueData[0]?.totalSpent || 0),
             videos: videoCount,
             testimonials: testimonialCount,
-            services: serviceCount
+            services: serviceCount,
+            activeUsers: recentActiveUsers
         });
     } catch (err) {
         console.error('Get dashboard stats error:', err);
@@ -388,6 +402,13 @@ exports.listUsers = async (req, res) => {
         const { count, rows } = await User.findAndCountAll({
             where,
             attributes: ['id', 'name', 'phone', 'businessName', 'businessType', 'city', 'isOnboarded', 'isActive', 'createdAt'],
+            include: [{
+                model: Subscription,
+                as: 'subscriptions',
+                where: { status: 'active' },
+                required: false,
+                include: [{ model: Plan, as: 'plan' }]
+            }],
             order: [['createdAt', 'DESC']],
             limit,
             offset
