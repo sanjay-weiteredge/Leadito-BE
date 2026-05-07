@@ -287,7 +287,9 @@ exports.createService = async (req, res) => {
         }
 
         const service = await Service.create({ title, description, iconUrl, order, isActive });
-        return res.status(201).json(service);
+        const data = service.get({ plain: true });
+        data.iconUrl = await signUrl(data.iconUrl);
+        return res.status(201).json(data);
     } catch (err) {
         console.error('Create service error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -300,7 +302,9 @@ exports.updateService = async (req, res) => {
         if (!service) return res.status(404).json({ message: 'Service not found' });
 
         await service.update(req.body);
-        return res.json(service);
+        const data = service.get({ plain: true });
+        data.iconUrl = await signUrl(data.iconUrl);
+        return res.json(data);
     } catch (err) {
         console.error('Update service error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -401,7 +405,7 @@ exports.listUsers = async (req, res) => {
 
         const { count, rows } = await User.findAndCountAll({
             where,
-            attributes: ['id', 'name', 'phone', 'businessName', 'businessType', 'city', 'isOnboarded', 'isActive', 'createdAt'],
+            attributes: ['id', 'name', 'phone', 'businessName', 'businessType', 'city', 'isOnboarded', 'isActive', 'createdAt', 'logoUrl'],
             include: [{
                 model: Subscription,
                 as: 'subscriptions',
@@ -414,8 +418,14 @@ exports.listUsers = async (req, res) => {
             offset
         });
 
+        const processed = await Promise.all(rows.map(async u => {
+            const data = u.get({ plain: true });
+            data.logoUrl = await signUrl(data.logoUrl);
+            return data;
+        }));
+
         return res.json({
-            users: rows,
+            users: processed,
             pagination: {
                 totalUsers: count,
                 totalPages: Math.ceil(count / limit),
@@ -443,7 +453,11 @@ exports.getUser = async (req, res) => {
             ],
         });
         if (!user) return res.status(404).json({ message: 'User not found' });
-        return res.json(user);
+
+        const data = user.get({ plain: true });
+        data.logoUrl = await signUrl(data.logoUrl);
+
+        return res.json(data);
     } catch (err) {
         console.error('Get user error:', err);
         return res.status(500).json({ message: 'Internal server error' });
