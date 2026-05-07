@@ -3,15 +3,28 @@ const jwt = require('jsonwebtoken');
 const { Admin, User, Subscription, Plan, AdsReport, Lead, Service, Video, Testimonial } = require('../models');
 const { Op } = require('sequelize');
 const notifCtrl = require('./notificationController');
-const { uploadToS3 } = require('../utils/s3');
+const { uploadToS3, getSignedUrlForView, isS3Value } = require('../utils/s3');
+
+const signUrl = async (url) => {
+    if (url && isS3Value(url)) {
+        return await getSignedUrlForView(url);
+    }
+    return url;
+};
 
 
 // ... other exports ...
 
+// Testimonial Management
 exports.listTestimonials = async (req, res) => {
     try {
         const testimonials = await Testimonial.findAll({ order: [['order', 'ASC'], ['createdAt', 'DESC']] });
-        return res.json(testimonials);
+        const processed = await Promise.all(testimonials.map(async t => {
+            const data = t.get({ plain: true });
+            data.avatarUrl = await signUrl(data.avatarUrl);
+            return data;
+        }));
+        return res.json(processed);
     } catch (err) {
         console.error('List testimonials error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -20,12 +33,12 @@ exports.listTestimonials = async (req, res) => {
 
 exports.createTestimonial = async (req, res) => {
     try {
-        const { name, role, feedback, avatarUrl, rating, socialIcon, isActive, order } = req.body;
-        if (!name || !feedback || !avatarUrl) {
-            return res.status(400).json({ message: 'Name, feedback, and avatarUrl are mandatory' });
+        const { name, role, feedback, rating, avatarUrl, order, isActive, socialIcon } = req.body;
+        if (!name || !feedback) {
+            return res.status(400).json({ message: 'Name and feedback are mandatory' });
         }
 
-        const testimonial = await Testimonial.create({ name, role, feedback, avatarUrl, rating, socialIcon, isActive, order });
+        const testimonial = await Testimonial.create({ name, role, feedback, rating, avatarUrl, order, isActive, socialIcon });
         return res.status(201).json(testimonial);
     } catch (err) {
         console.error('Create testimonial error:', err);
@@ -59,10 +72,17 @@ exports.deleteTestimonial = async (req, res) => {
     }
 };
 
+// Video Management (with S3 Support)
 exports.listVideos = async (req, res) => {
     try {
         const videos = await Video.findAll({ order: [['createdAt', 'DESC']] });
-        return res.json(videos);
+        const processed = await Promise.all(videos.map(async v => {
+            const data = v.get({ plain: true });
+            data.videoUrl = await signUrl(data.videoUrl);
+            data.thumbnailUrl = await signUrl(data.thumbnailUrl);
+            return data;
+        }));
+        return res.json(processed);
     } catch (err) {
         console.error('List videos error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -131,10 +151,16 @@ exports.deleteVideo = async (req, res) => {
     }
 };
 
+// Service Management
 exports.listServices = async (req, res) => {
     try {
         const services = await Service.findAll({ order: [['order', 'ASC']] });
-        return res.json(services);
+        const processed = await Promise.all(services.map(async s => {
+            const data = s.get({ plain: true });
+            data.iconUrl = await signUrl(data.iconUrl);
+            return data;
+        }));
+        return res.json(processed);
     } catch (err) {
         console.error('List services error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -182,109 +208,6 @@ exports.deleteService = async (req, res) => {
     }
 };
 
-// Video Management
-exports.listVideos = async (req, res) => {
-    try {
-        const videos = await Video.findAll({ order: [['createdAt', 'DESC']] });
-        return res.json(videos);
-    } catch (err) {
-        console.error('List videos error:', err);
-        return res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-exports.createVideo = async (req, res) => {
-    try {
-        const { title, description, videoUrl, thumbnailUrl, isActive } = req.body;
-        if (!title || !videoUrl || !thumbnailUrl) {
-            return res.status(400).json({ message: 'Title, videoUrl, and thumbnailUrl are mandatory' });
-        }
-
-        const video = await Video.create({ title, description, videoUrl, thumbnailUrl, isActive });
-        return res.status(201).json(video);
-    } catch (err) {
-        console.error('Create video error:', err);
-        return res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-exports.updateVideo = async (req, res) => {
-    try {
-        const video = await Video.findByPk(req.params.id);
-        if (!video) return res.status(404).json({ message: 'Video not found' });
-
-        await video.update(req.body);
-        return res.json(video);
-    } catch (err) {
-        console.error('Update video error:', err);
-        return res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-exports.deleteVideo = async (req, res) => {
-    try {
-        const video = await Video.findByPk(req.params.id);
-        if (!video) return res.status(404).json({ message: 'Video not found' });
-
-        await video.destroy();
-        return res.json({ message: 'Video deleted successfully' });
-    } catch (err) {
-        console.error('Delete video error:', err);
-        return res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-// Testimonial Management
-exports.listTestimonials = async (req, res) => {
-    try {
-        const testimonials = await Testimonial.findAll({ order: [['order', 'ASC'], ['createdAt', 'DESC']] });
-        return res.json(testimonials);
-    } catch (err) {
-        console.error('List testimonials error:', err);
-        return res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-exports.createTestimonial = async (req, res) => {
-    try {
-        const { name, role, feedback, rating, avatarUrl, order, isActive, socialIcon } = req.body;
-        if (!name || !feedback || !avatarUrl) {
-            return res.status(400).json({ message: 'Name, feedback, and avatarUrl are mandatory' });
-        }
-
-        const testimonial = await Testimonial.create({ name, role, feedback, rating, avatarUrl, order, isActive, socialIcon });
-        return res.status(201).json(testimonial);
-    } catch (err) {
-        console.error('Create testimonial error:', err);
-        return res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-exports.updateTestimonial = async (req, res) => {
-    try {
-        const testimonial = await Testimonial.findByPk(req.params.id);
-        if (!testimonial) return res.status(404).json({ message: 'Testimonial not found' });
-
-        await testimonial.update(req.body);
-        return res.json(testimonial);
-    } catch (err) {
-        console.error('Update testimonial error:', err);
-        return res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-exports.deleteTestimonial = async (req, res) => {
-    try {
-        const testimonial = await Testimonial.findByPk(req.params.id);
-        if (!testimonial) return res.status(404).json({ message: 'Testimonial not found' });
-
-        await testimonial.destroy();
-        return res.json({ message: 'Testimonial deleted successfully' });
-    } catch (err) {
-        console.error('Delete testimonial error:', err);
-        return res.status(500).json({ message: 'Internal server error' });
-    }
-};
 
 
 
@@ -345,11 +268,26 @@ exports.login = async (req, res) => {
 
 exports.listUsers = async (req, res) => {
     try {
-        const users = await User.findAll({
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = (page - 1) * limit;
+
+        const { count, rows } = await User.findAndCountAll({
             attributes: ['id', 'name', 'phone', 'businessName', 'businessType', 'city', 'isOnboarded', 'isActive', 'createdAt'],
             order: [['createdAt', 'DESC']],
+            limit,
+            offset
         });
-        return res.json(users);
+
+        return res.json({
+            users: rows,
+            pagination: {
+                totalUsers: count,
+                totalPages: Math.ceil(count / limit),
+                currentPage: page,
+                limit
+            }
+        });
     } catch (err) {
         console.error('List users error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -493,14 +431,56 @@ exports.deletePlan = async (req, res) => {
 
 exports.listAdsReports = async (req, res) => {
     try {
-        const reports = await AdsReport.findAll({
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+        const { userId } = req.query;
+
+        const where = {};
+        if (userId && userId !== 'all') {
+            where.userId = userId;
+        }
+
+        const { count, rows } = await AdsReport.findAndCountAll({
+            where,
             include: [
                 { model: User, as: 'user', attributes: ['id', 'name', 'phone', 'businessName'] },
                 { model: Admin, as: 'admin', attributes: ['id', 'name'] },
             ],
-            order: [['month', 'DESC']],
+            order: [['month', 'DESC'], ['createdAt', 'DESC']],
+            limit,
+            offset
         });
-        return res.json(reports);
+
+        // Calculate totals for stats cards
+        const totals = await AdsReport.findAll({
+            where,
+            attributes: [
+                [AdsReport.sequelize.fn('SUM', AdsReport.sequelize.col('adBudget')), 'totalSpent'],
+                [AdsReport.sequelize.fn('SUM', AdsReport.sequelize.col('leads')), 'totalLeads'],
+                [AdsReport.sequelize.fn('SUM', AdsReport.sequelize.col('revenue')), 'totalRevenue'],
+                [AdsReport.sequelize.fn('SUM', AdsReport.sequelize.col('closedDeals')), 'totalDeals'],
+            ],
+            raw: true
+        });
+
+        const stats = totals && totals[0] ? totals[0] : {};
+
+        return res.json({
+            reports: rows,
+            stats: {
+                spent: Number(stats.totalSpent || 0),
+                leads: Number(stats.totalLeads || 0),
+                revenue: Number(stats.totalRevenue || 0),
+                deals: Number(stats.totalDeals || 0),
+            },
+            pagination: {
+                totalReports: count,
+                totalPages: Math.ceil(count / limit),
+                currentPage: page,
+                limit
+            }
+        });
     } catch (err) {
         console.error('List ads reports error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -588,13 +568,103 @@ exports.updateAdsReport = async (req, res) => {
 
 exports.listLeads = async (req, res) => {
     try {
-        const leads = await Lead.findAll({
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = (page - 1) * limit;
+        const { userId, status, search } = req.query;
+
+        const where = {};
+        if (userId && userId !== 'all') {
+            where.userId = userId;
+        }
+        if (status && status !== 'all') {
+            where.status = status;
+        }
+        if (search) {
+            where[Op.or] = [
+                { name: { [Op.iLike]: `%${search}%` } },
+                { phone: { [Op.iLike]: `%${search}%` } },
+                { email: { [Op.iLike]: `%${search}%` } }
+            ];
+        }
+
+        const { count, rows } = await Lead.findAndCountAll({
+            where,
             include: [{ model: User, as: 'user', attributes: ['id', 'name', 'phone', 'businessName'] }],
             order: [['createdAt', 'DESC']],
+            limit,
+            offset
         });
-        return res.json(leads);
+
+        // Global Metrics for Cards (Across all leads, or respect userId filter if applied)
+        const statsWhere = {};
+        if (userId && userId !== 'all') statsWhere.userId = userId;
+
+        const statusCounts = await Lead.findAll({
+            where: statsWhere,
+            attributes: ['status', [Lead.sequelize.fn('COUNT', Lead.sequelize.col('id')), 'count']],
+            group: ['status'],
+            raw: true
+        });
+
+        const metrics = {
+            total: await Lead.count({ where: statsWhere }),
+            statusWise: {}
+        };
+
+        statusCounts.forEach(sc => {
+            metrics.statusWise[sc.status] = parseInt(sc.count);
+        });
+
+        // Conversion Ratio Calculation (Closed / Total)
+        const closedCount = metrics.statusWise['closed'] || 0;
+        metrics.conversionRatio = metrics.total > 0 ? ((closedCount / metrics.total) * 100).toFixed(1) : "0.0";
+
+        return res.json({
+            leads: rows,
+            metrics,
+            pagination: {
+                totalLeads: count,
+                totalPages: Math.ceil(count / limit),
+                currentPage: page,
+                limit
+            }
+        });
     } catch (err) {
         console.error('Admin list leads error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+exports.deleteAdsReport = async (req, res) => {
+    try {
+        const report = await AdsReport.findByPk(req.params.id);
+        if (!report) return res.status(404).json({ message: 'Report not found' });
+
+        await report.destroy();
+        return res.json({ message: 'Report deleted successfully' });
+    } catch (err) {
+        console.error('Delete ads report error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+exports.deleteUser = async (req, res) => {
+    try {
+        const user = await User.findByPk(req.params.id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // Manually cleaning up related records just in case DB level cascade is not set
+        await Promise.all([
+            Subscription.destroy({ where: { userId: user.id } }),
+            AdsReport.destroy({ where: { userId: user.id } }),
+            Lead.destroy({ where: { userId: user.id } })
+        ]);
+
+        await user.destroy();
+        return res.json({ message: 'User and all associated data permanently deleted' });
+    } catch (err) {
+        console.error('Delete user error:', err);
         return res.status(500).json({ message: 'Internal server error' });
     }
 };

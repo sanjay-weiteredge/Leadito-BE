@@ -50,8 +50,12 @@ const uploadToS3 = async (file, folder = 'logos') => {
 const isS3Value = (value) => {
     if (!value) return false;
     const clean = value.trim();
+    // Check for known S3 folders or the AWS domain
     return (
         clean.startsWith('logos/') ||
+        clean.startsWith('videos/') ||
+        clean.startsWith('testimonials/') ||
+        clean.startsWith('ads/') ||
         clean.includes('amazonaws.com')
     );
 };

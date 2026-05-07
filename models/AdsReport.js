@@ -82,7 +82,7 @@ module.exports = (sequelize, DataTypes) => {
         campaignStatus: {
             type: DataTypes.ENUM('active', 'published', 'issue', 'budget_low', 'paused'),
             allowNull: true,
-            defaultValue: null,
+            defaultValue: 'active',
         },
         paymentStatus: {
             type: DataTypes.ENUM('pending', 'paid', 'overdue'),
