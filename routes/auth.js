@@ -5,6 +5,8 @@ const userAuth = require('../middleware/userAuth');
 
 router.post('/send-otp', ctrl.sendOtp);
 router.post('/verify-otp', ctrl.verifyOtp);
+router.post('/verify-firebase-otp', ctrl.verifyFirebaseOtp);
+
 
 const { upload } = require('../utils/s3');
 

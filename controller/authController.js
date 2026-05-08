@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 const { uploadToS3, getSignedUrlForView, isS3Value } = require('../utils/s3');
+const admin = require('../utils/firebaseAdmin');
 
 const processUser = async (user) => {
     if (!user) return null;
@@ -81,6 +82,48 @@ exports.verifyOtp = async (req, res) => {
         return res.status(500).json({ message: 'Internal server error' });
     }
 };
+
+
+exports.verifyFirebaseOtp = async (req, res) => {
+    try {
+        const { idToken } = req.body;
+        if (!idToken) return res.status(400).json({ message: 'Firebase ID Token is required' });
+
+        // Verify the ID token sent from the client
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        const { phone_number: phone, uid } = decodedToken;
+
+        if (!phone) {
+            return res.status(400).json({ message: 'Phone number not found in token' });
+        }
+
+        // Standardize phone number if needed (Firebase already returns E.164)
+        // Check if user exists, otherwise create
+        let [user, created] = await User.findOrCreate({
+            where: { phone },
+            defaults: { phone },
+        });
+
+        // Generate our local JWT
+        const token = jwt.sign(
+            { id: user.id, phone: user.phone, isActive: user.isActive, isOnboarded: user.isOnboarded },
+            process.env.USER_JWT_SECRET,
+            { expiresIn: '30d' }
+        );
+
+        const processedUser = await processUser(user);
+        return res.json({
+            token,
+            user: processedUser,
+            isNewUser: created,
+            firebaseUid: uid
+        });
+    } catch (err) {
+        console.error('Firebase Verify OTP error:', err);
+        return res.status(401).json({ message: 'Invalid or expired Firebase token' });
+    }
+};
+
 
 
 exports.onboarding = async (req, res) => {
