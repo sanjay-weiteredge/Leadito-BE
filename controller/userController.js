@@ -218,9 +218,13 @@ exports.getPlans = async (req, res) => {
 
 exports.getAdsResults = async (req, res) => {
     try {
-        const { platform, type } = req.query; // platform: meta/facebook/instagram, type: weekly/monthly
+        const { platform, type } = req.query;
 
-        if (!req.user.isActive) {
+        // Fetch fresh user status from DB to reflect payments immediately (avoid stale JWT isActive)
+        const user = await User.findByPk(req.user.id);
+        const isActive = user ? user.isActive : false;
+
+        if (!isActive) {
             return res.json({
                 demo: true,
                 message: 'Upgrade to a paid plan to see your real ad performance data.',
