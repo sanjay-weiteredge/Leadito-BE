@@ -119,8 +119,19 @@ exports.verifyFirebaseOtp = async (req, res) => {
             firebaseUid: uid
         });
     } catch (err) {
-        console.error('Firebase Verify OTP error:', err);
-        return res.status(401).json({ message: 'Invalid or expired Firebase token' });
+        console.error('🔥 [BACKEND] Firebase Verify Error:', err.message);
+
+        // Handle specific Firebase Admin errors
+        if (err.code === 'auth/id-token-expired') {
+            return res.status(401).json({ message: 'Token expired. Please login again.' });
+        } else if (err.code === 'auth/invalid-id-token') {
+            return res.status(401).json({ message: 'Invalid authentication token.' });
+        }
+
+        return res.status(500).json({
+            message: 'Internal server error during verification',
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
     }
 };
 
