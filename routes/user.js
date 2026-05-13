@@ -8,6 +8,7 @@ router.get('/plans', ctrl.getPlans);
 router.get('/services', ctrl.listServices);
 router.get('/videos', ctrl.listVideos);
 router.get('/testimonials', ctrl.listTestimonials);
+router.get('/settings', ctrl.getSettings);
 
 router.use(userAuth);
 

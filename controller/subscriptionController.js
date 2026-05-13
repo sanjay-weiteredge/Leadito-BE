@@ -2,6 +2,7 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const { User, Subscription, Plan, sequelize } = require('../models');
 const notifCtrl = require('./notificationController');
+const { uploadToS3 } = require('../utils/s3');
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -143,6 +144,39 @@ exports.verifyPayment = async (req, res) => {
     } catch (err) {
         await t.rollback();
         console.error('Verify payment error:', err);
+        return res.status(500).json({ message: 'Internal server error', error: err.message });
+    }
+};
+
+exports.requestManualPayment = async (req, res) => {
+    try {
+        const { planId } = req.body;
+        if (!planId) return res.status(400).json({ message: 'Plan ID is required' });
+
+        const plan = await Plan.findByPk(planId);
+        if (!plan) return res.status(404).json({ message: 'Plan not found' });
+
+        let proofUrl = null;
+        if (req.file) {
+            proofUrl = await uploadToS3(req.file, 'proofs');
+        }
+
+        const subscription = await Subscription.create({
+            userId: req.user.id,
+            planId: plan.id,
+            status: 'pending',
+            amount: plan.price,
+            proofUrl: proofUrl,
+            startDate: new Date().toISOString().split('T')[0],
+            expiryDate: new Date().toISOString().split('T')[0], // Placeholder
+        });
+
+        return res.status(201).json({
+            message: 'Manual payment request submitted successfully. Waiting for admin approval.',
+            subscription
+        });
+    } catch (err) {
+        console.error('Request manual payment error:', err);
         return res.status(500).json({ message: 'Internal server error', error: err.message });
     }
 };

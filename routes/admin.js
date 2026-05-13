@@ -42,5 +42,11 @@ router.get('/testimonials', ctrl.listTestimonials);
 router.post('/testimonials', ctrl.createTestimonial);
 router.patch('/testimonials/:id', ctrl.updateTestimonial);
 router.delete('/testimonials/:id', ctrl.deleteTestimonial);
+// Manual Subscription Management
+router.get('/subscriptions/pending', ctrl.listPendingSubscriptions);
+router.post('/subscriptions/:subId/approve', ctrl.approveSubscription);
+
+router.get('/settings', ctrl.getSettings);
+router.patch('/settings', ctrl.updateSetting);
 
 module.exports = router;

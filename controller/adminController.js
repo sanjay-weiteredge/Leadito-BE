@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { Admin, User, Subscription, Plan, AdsReport, Lead, LeadNote, Service, Video, Testimonial, Notification, sequelize } = require('../models');
+const { Admin, User, Subscription, Plan, AdsReport, Lead, LeadNote, Service, Video, Testimonial, Notification, SystemSetting, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const notifCtrl = require('./notificationController');
 const { uploadToS3, getSignedUrlForView, isS3Value } = require('../utils/s3');
@@ -23,7 +23,8 @@ exports.getDashboardStats = async (req, res) => {
             videoCount,
             testimonialCount,
             serviceCount,
-            recentActiveUsers
+            recentActiveUsers,
+            pendingSubsCount
         ] = await Promise.all([
             User.count(),
             Lead.count(),
@@ -50,7 +51,8 @@ exports.getDashboardStats = async (req, res) => {
                 }],
                 order: [['updatedAt', 'DESC']],
                 limit: 5
-            })
+            }),
+            Subscription.count({ where: { status: 'pending' } })
         ]);
 
         return res.json({
@@ -62,7 +64,8 @@ exports.getDashboardStats = async (req, res) => {
             videos: videoCount,
             testimonials: testimonialCount,
             services: serviceCount,
-            activeUsers: recentActiveUsers
+            activeUsers: recentActiveUsers,
+            pendingApprovals: pendingSubsCount
         });
     } catch (err) {
         console.error('Get dashboard stats error:', err);
@@ -547,7 +550,7 @@ exports.listPlans = async (req, res) => {
 
 exports.createPlan = async (req, res) => {
     try {
-        const { name, price, durationDays, adBudget, expectedLeads, features } = req.body;
+        const { name, price, durationDays, adBudget, expectedLeads, features, paymentLink } = req.body;
         if (!name || price === undefined)
             return res.status(400).json({ message: 'name and price are required' });
 
@@ -557,7 +560,8 @@ exports.createPlan = async (req, res) => {
             durationDays: durationDays || 30,
             adBudget,
             expectedLeads,
-            features
+            features,
+            paymentLink
         });
         return res.status(201).json(plan);
     } catch (err) {
@@ -889,6 +893,141 @@ exports.deleteUser = async (req, res) => {
         return res.json({ message: 'User and all associated data permanently deleted' });
     } catch (err) {
         console.error('Delete user error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// --- Manual Payment Management ---
+
+exports.listPendingSubscriptions = async (req, res) => {
+    try {
+        const subscriptions = await Subscription.findAll({
+            where: { status: 'pending' },
+            include: [
+                { model: User, as: 'user', attributes: ['id', 'name', 'phone', 'businessName'] },
+                { model: Plan, as: 'plan', attributes: ['id', 'name', 'price'] }
+            ],
+            order: [['createdAt', 'DESC']]
+        });
+
+        const processed = await Promise.all(subscriptions.map(async sub => {
+            const json = sub.toJSON();
+            if (json.proofUrl) {
+                json.proofUrl = await getSignedUrlForView(json.proofUrl);
+            }
+            return json;
+        }));
+
+        return res.json(processed);
+    } catch (err) {
+        console.error('List pending subscriptions error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+exports.approveSubscription = async (req, res) => {
+    const t = await sequelize.transaction();
+    try {
+        const { subId } = req.params;
+        const subscription = await Subscription.findByPk(subId, { transaction: t });
+        if (!subscription) {
+            await t.rollback();
+            return res.status(404).json({ message: 'Subscription not found' });
+        }
+
+        if (subscription.status !== 'pending') {
+            await t.rollback();
+            return res.status(400).json({ message: 'Subscription is not pending' });
+        }
+
+        const plan = await Plan.findByPk(subscription.planId, { transaction: t });
+        const user = await User.findByPk(subscription.userId, { transaction: t });
+
+        const duration = plan.durationDays || 90;
+        let startDate = new Date();
+        let expiryDate = new Date();
+
+        // If user already has an active sub, handle renewal
+        const activeSub = await Subscription.findOne({
+            where: { userId: user.id, status: 'active' },
+            transaction: t
+        });
+
+        if (activeSub) {
+            const currentExpiry = new Date(activeSub.expiryDate);
+            const now = new Date();
+            const baseDate = currentExpiry > now ? currentExpiry : now;
+            expiryDate = new Date(baseDate);
+            expiryDate.setDate(expiryDate.getDate() + duration);
+
+            // Mark old sub as expired
+            await activeSub.update({ status: 'expired' }, { transaction: t });
+        } else {
+            expiryDate.setDate(expiryDate.getDate() + duration);
+        }
+
+        // Update current subscription
+        await subscription.update({
+            status: 'active',
+            startDate: startDate.toISOString().split('T')[0],
+            expiryDate: expiryDate.toISOString().split('T')[0],
+        }, { transaction: t });
+
+        // Activate user
+        await user.update({ isActive: true }, { transaction: t });
+
+        await t.commit();
+
+        // Notify user
+        await notifCtrl.createNotification(
+            user.id,
+            'Payment Approved! 🚀',
+            `Your payment for the ${plan.name} has been verified. Your account is now active!`,
+            'payment',
+            { planId: plan.id }
+        );
+
+        return res.json({ message: 'Subscription approved and user activated successfully.' });
+    } catch (err) {
+        if (t) await t.rollback();
+        console.error('Approve subscription error:', err);
+        return res.status(500).json({ message: 'Internal server error', error: err.message });
+    }
+};
+
+// --- System Settings Management ---
+
+exports.getSettings = async (req, res) => {
+    try {
+        const settings = await SystemSetting.findAll();
+        const settingsMap = {};
+        settings.forEach(s => {
+            settingsMap[s.key] = s.value;
+        });
+        return res.json(settingsMap);
+    } catch (err) {
+        console.error('Get settings error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+exports.updateSetting = async (req, res) => {
+    try {
+        const { key, value } = req.body;
+        if (!key) return res.status(400).json({ message: 'Key is required' });
+
+        const [setting, created] = await SystemSetting.findOrCreate({
+            where: { key },
+            defaults: { value, description: 'Auto-generated setting' }
+        });
+
+        if (!created) {
+            await setting.update({ value });
+        }
+
+        return res.json({ message: `Setting ${key} updated successfully`, value });
+    } catch (err) {
+        console.error('Update setting error:', err);
         return res.status(500).json({ message: 'Internal server error' });
     }
 };

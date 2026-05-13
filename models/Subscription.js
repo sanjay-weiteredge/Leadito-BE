@@ -24,8 +24,13 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
         },
         status: {
-            type: DataTypes.ENUM('active', 'expired', 'cancelled'),
+            type: DataTypes.ENUM('active', 'expired', 'cancelled', 'pending'),
             defaultValue: 'active',
+        },
+        proofUrl: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            comment: 'URL of the payment proof screenshot',
         },
         paymentId: {
             type: DataTypes.STRING,

@@ -1,4 +1,4 @@
-const { User, Subscription, Plan, Lead, LeadNote, AdsReport, Service, Video, Testimonial } = require('../models');
+const { User, Subscription, Plan, Lead, LeadNote, AdsReport, Service, Video, Testimonial, SystemSetting } = require('../models');
 const notifCtrl = require('./notificationController');
 const { uploadToS3, getSignedUrlForView, isS3Value } = require('../utils/s3');
 
@@ -211,6 +211,20 @@ exports.getPlans = async (req, res) => {
         return res.json(plans);
     } catch (err) {
         console.error('Get plans error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+exports.getSettings = async (req, res) => {
+    try {
+        const settings = await SystemSetting.findAll();
+        const settingsMap = {};
+        settings.forEach(s => {
+            settingsMap[s.key] = s.value;
+        });
+        return res.json(settingsMap);
+    } catch (err) {
+        console.error('Get settings error:', err);
         return res.status(500).json({ message: 'Internal server error' });
     }
 };

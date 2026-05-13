@@ -45,6 +45,10 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: true,
             comment: 'Array of feature objects',
         },
+        paymentLink: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
     }, {
         sequelize,
         modelName: 'Plan',
