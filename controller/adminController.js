@@ -34,7 +34,8 @@ exports.getDashboardStats = async (req, res) => {
             manualTotalRevenue,
             manualMonthlyRevenue,
             manualPendingRenewals,
-            manualRenewalsThisWeek
+            manualRenewalsThisWeek,
+            manualActivePaid
         ] = await Promise.all([
             User.count(),
             Lead.count(),
@@ -84,13 +85,15 @@ exports.getDashboardStats = async (req, res) => {
             SystemSetting.findOne({ where: { key: 'MANUAL_TOTAL_REVENUE' } }),
             SystemSetting.findOne({ where: { key: 'MANUAL_MONTHLY_REVENUE' } }),
             SystemSetting.findOne({ where: { key: 'MANUAL_PENDING_RENEWALS' } }),
-            SystemSetting.findOne({ where: { key: 'MANUAL_RENEWALS_THIS_WEEK' } })
+            SystemSetting.findOne({ where: { key: 'MANUAL_RENEWALS_THIS_WEEK' } }),
+            SystemSetting.findOne({ where: { key: 'MANUAL_ACTIVE_PAID' } })
         ]);
 
         const totalRev = manualTotalRevenue ? parseFloat(manualTotalRevenue.value) : (subRevenue || 0) / 100;
         const monthlyRev = manualMonthlyRevenue ? parseFloat(manualMonthlyRevenue.value) : (monthlySubRevenue || 0) / 100;
         const pendingRen = manualPendingRenewals ? parseInt(manualPendingRenewals.value) : pendingSubsCount;
         const renThisWeek = manualRenewalsThisWeek ? parseInt(manualRenewalsThisWeek.value) : renewalsThisWeek;
+        const activePaid = manualActivePaid ? parseInt(manualActivePaid.value) : activePaidCount;
 
         return res.json({
             users: userCount,
@@ -103,7 +106,7 @@ exports.getDashboardStats = async (req, res) => {
             services: serviceCount,
             activeUsers: recentActiveUsers,
             pendingApprovals: pendingSubsCount,
-            activePaidClients: activePaidCount,
+            activePaidClients: activePaid,
             freeUsers: freeUserCount,
             expiredUsers: expiredCount,
             totalSubscriptionRevenue: totalRev,
@@ -113,7 +116,8 @@ exports.getDashboardStats = async (req, res) => {
             manualTotalRevenue: manualTotalRevenue?.value || "",
             manualMonthlyRevenue: manualMonthlyRevenue?.value || "",
             manualPendingRenewals: manualPendingRenewals?.value || "",
-            manualRenewalsThisWeek: manualRenewalsThisWeek?.value || ""
+            manualRenewalsThisWeek: manualRenewalsThisWeek?.value || "",
+            manualActivePaid: manualActivePaid?.value || ""
         });
     } catch (err) {
         console.error('Get dashboard stats error:', err);
