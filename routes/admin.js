@@ -14,8 +14,8 @@ router.get('/stats', ctrl.getDashboardStats);
 router.get('/users', ctrl.listUsers);
 router.get('/users/:id', ctrl.getUser);
 router.patch('/users/:id/activate', ctrl.activateUser);
-router.patch('/users/:id/deactivate', ctrl.deactivateUser);
-router.delete('/users/:id', ctrl.deleteUser);
+router.patch('/users/:id/toggle-status', ctrl.toggleUserStatus);
+router.patch('/users/:id/lead-info', ctrl.updateUserLeadInfo);
 
 router.get('/plans', ctrl.listPlans);
 router.post('/plans', ctrl.createPlan);

@@ -24,7 +24,17 @@ exports.getDashboardStats = async (req, res) => {
             testimonialCount,
             serviceCount,
             recentActiveUsers,
-            pendingSubsCount
+            pendingSubsCount,
+            activePaidCount,
+            freeUserCount,
+            expiredCount,
+            subRevenue,
+            monthlySubRevenue,
+            renewalsThisWeek,
+            manualTotalRevenue,
+            manualMonthlyRevenue,
+            manualPendingRenewals,
+            manualRenewalsThisWeek
         ] = await Promise.all([
             User.count(),
             Lead.count(),
@@ -52,8 +62,35 @@ exports.getDashboardStats = async (req, res) => {
                 order: [['updatedAt', 'DESC']],
                 limit: 5
             }),
-            Subscription.count({ where: { status: 'pending' } })
+            Subscription.count({ where: { status: 'pending' } }),
+            User.count({ where: { isActive: true } }),
+            User.count({ where: { isActive: false } }),
+            Subscription.count({ where: { expiryDate: { [Op.lt]: new Date() } } }),
+            Subscription.sum('amount', { where: { status: 'active' } }),
+            Subscription.sum('amount', {
+                where: {
+                    status: 'active',
+                    createdAt: { [Op.gte]: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }
+                }
+            }),
+            Subscription.count({
+                where: {
+                    status: 'active',
+                    expiryDate: {
+                        [Op.between]: [new Date(), new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)]
+                    }
+                }
+            }),
+            SystemSetting.findOne({ where: { key: 'MANUAL_TOTAL_REVENUE' } }),
+            SystemSetting.findOne({ where: { key: 'MANUAL_MONTHLY_REVENUE' } }),
+            SystemSetting.findOne({ where: { key: 'MANUAL_PENDING_RENEWALS' } }),
+            SystemSetting.findOne({ where: { key: 'MANUAL_RENEWALS_THIS_WEEK' } })
         ]);
+
+        const totalRev = manualTotalRevenue ? parseFloat(manualTotalRevenue.value) : (subRevenue || 0) / 100;
+        const monthlyRev = manualMonthlyRevenue ? parseFloat(manualMonthlyRevenue.value) : (monthlySubRevenue || 0) / 100;
+        const pendingRen = manualPendingRenewals ? parseInt(manualPendingRenewals.value) : pendingSubsCount;
+        const renThisWeek = manualRenewalsThisWeek ? parseInt(manualRenewalsThisWeek.value) : renewalsThisWeek;
 
         return res.json({
             users: userCount,
@@ -65,7 +102,18 @@ exports.getDashboardStats = async (req, res) => {
             testimonials: testimonialCount,
             services: serviceCount,
             activeUsers: recentActiveUsers,
-            pendingApprovals: pendingSubsCount
+            pendingApprovals: pendingSubsCount,
+            activePaidClients: activePaidCount,
+            freeUsers: freeUserCount,
+            expiredUsers: expiredCount,
+            totalSubscriptionRevenue: totalRev,
+            monthlySubscriptionRevenue: monthlyRev,
+            renewalsThisWeek: renThisWeek,
+            pendingRenewals: pendingRen,
+            manualTotalRevenue: manualTotalRevenue?.value || "",
+            manualMonthlyRevenue: manualMonthlyRevenue?.value || "",
+            manualPendingRenewals: manualPendingRenewals?.value || "",
+            manualRenewalsThisWeek: manualRenewalsThisWeek?.value || ""
         });
     } catch (err) {
         console.error('Get dashboard stats error:', err);
@@ -408,15 +456,17 @@ exports.listUsers = async (req, res) => {
 
         const { count, rows } = await User.findAndCountAll({
             where,
-            attributes: ['id', 'name', 'phone', 'businessName', 'businessType', 'city', 'isOnboarded', 'isActive', 'createdAt', 'logoUrl'],
+            attributes: ['id', 'name', 'phone', 'businessName', 'businessType', 'city', 'isOnboarded', 'isActive', 'createdAt', 'logoUrl', 'leadStatus', 'nextFollowUpDate', 'adminNotes', 'lastActivity'],
             include: [{
                 model: Subscription,
                 as: 'subscriptions',
-                where: { status: 'active' },
                 required: false,
                 include: [{ model: Plan, as: 'plan' }]
             }],
-            order: [['createdAt', 'DESC']],
+            order: [
+                ['createdAt', 'DESC'],
+                [{ model: Subscription, as: 'subscriptions' }, 'createdAt', 'DESC']
+            ],
             limit,
             offset
         });
@@ -507,14 +557,28 @@ exports.deactivateUser = async (req, res) => {
 
         await user.update({ isActive: false });
 
-        await Subscription.update(
-            { status: 'cancelled' },
-            { where: { userId: user.id, status: 'active' } }
-        );
-
         return res.json({ message: 'User deactivated successfully' });
     } catch (err) {
         console.error('Deactivate user error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+
+exports.toggleUserStatus = async (req, res) => {
+    try {
+        const user = await User.findByPk(req.params.id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const newState = !user.isActive;
+        await user.update({ isActive: newState });
+
+        return res.json({
+            message: `Account has been ${newState ? 'Reactivated' : 'Suspended'} successfully`,
+            isActive: newState
+        });
+    } catch (err) {
+        console.error('Toggle status error:', err);
         return res.status(500).json({ message: 'Internal server error' });
     }
 };
@@ -550,7 +614,7 @@ exports.listPlans = async (req, res) => {
 
 exports.createPlan = async (req, res) => {
     try {
-        const { name, price, durationDays, adBudget, expectedLeads, features, paymentLink } = req.body;
+        const { name, price, durationDays, adBudget, expectedLeads, features, paymentLink, highlightTag } = req.body;
         if (!name || price === undefined)
             return res.status(400).json({ message: 'name and price are required' });
 
@@ -561,7 +625,8 @@ exports.createPlan = async (req, res) => {
             adBudget,
             expectedLeads,
             features,
-            paymentLink
+            paymentLink,
+            highlightTag
         });
         return res.status(201).json(plan);
     } catch (err) {
@@ -921,6 +986,31 @@ exports.listPendingSubscriptions = async (req, res) => {
         return res.json(processed);
     } catch (err) {
         console.error('List pending subscriptions error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+exports.updateUserLeadInfo = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { leadStatus, nextFollowUpDate, adminNotes } = req.body;
+
+        const user = await User.findByPk(id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const updateData = {};
+        if (leadStatus) updateData.leadStatus = leadStatus;
+        if (nextFollowUpDate !== undefined) updateData.nextFollowUpDate = nextFollowUpDate;
+        if (adminNotes !== undefined) updateData.adminNotes = adminNotes;
+
+        // Track that activity happened
+        updateData.lastActivity = new Date();
+
+        await user.update(updateData);
+
+        return res.json({ message: 'Lead info updated successfully', user });
+    } catch (err) {
+        console.error('Update lead info error:', err);
         return res.status(500).json({ message: 'Internal server error' });
     }
 };

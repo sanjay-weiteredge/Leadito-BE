@@ -49,6 +49,10 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.STRING,
             allowNull: true,
         },
+        highlightTag: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
     }, {
         sequelize,
         modelName: 'Plan',

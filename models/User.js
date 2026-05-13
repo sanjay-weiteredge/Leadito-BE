@@ -63,6 +63,22 @@ module.exports = (sequelize, DataTypes) => {
             defaultValue: false,
             comment: 'Set to true by admin after payment',
         },
+        leadStatus: {
+            type: DataTypes.ENUM('New Lead', 'Call Not Answered', 'Interested', 'Not Interested', 'Follow-Up', 'Appointment Booked', 'Payment Pending', 'Closed'),
+            defaultValue: 'New Lead',
+        },
+        nextFollowUpDate: {
+            type: DataTypes.DATEONLY,
+            allowNull: true,
+        },
+        adminNotes: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+        },
+        lastActivity: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
     }, {
         sequelize,
         modelName: 'User',
