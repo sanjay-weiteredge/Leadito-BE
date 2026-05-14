@@ -19,23 +19,21 @@ exports.getDashboardStats = async (req, res) => {
             userCount,
             leadCount,
             adCount,
-            revenueData,
+            adsStats,
             videoCount,
             testimonialCount,
             serviceCount,
             recentActiveUsers,
             pendingSubsCount,
             activePaidCount,
-            freeUserCount,
-            expiredCount,
-            subRevenue,
-            monthlySubRevenue,
-            renewalsThisWeek,
-            manualTotalRevenue,
-            manualMonthlyRevenue,
+            freeUsersCount,
+            expiredUsersCount,
+            totalSubRevenue,
+            currentMonthRevenue,
+            renewalsThisWeekCount,
             manualPendingRenewals,
             manualRenewalsThisWeek,
-            manualActivePaid
+            manualActiveAds
         ] = await Promise.all([
             User.count(),
             Lead.count(),
@@ -55,7 +53,7 @@ exports.getDashboardStats = async (req, res) => {
                 where: { isActive: true },
                 include: [{
                     model: Subscription,
-                    as: 'subscriptions', // Verify alias
+                    as: 'subscriptions',
                     where: { status: 'active' },
                     required: false,
                     include: [{ model: Plan, as: 'plan' }]
@@ -67,10 +65,14 @@ exports.getDashboardStats = async (req, res) => {
             User.count({ where: { isActive: true } }),
             User.count({ where: { isActive: false } }),
             Subscription.count({ where: { expiryDate: { [Op.lt]: new Date() } } }),
-            Subscription.sum('amount', { where: { status: 'active' } }),
+            // Total Revenue from all SUCCESSFUL payments (Active & Expired)
+            Subscription.sum('amount', {
+                where: { status: { [Op.in]: ['active', 'expired'] } }
+            }),
+            // Monthly Revenue from all SUCCESSFUL payments created this month
             Subscription.sum('amount', {
                 where: {
-                    status: 'active',
+                    status: { [Op.in]: ['active', 'expired'] },
                     createdAt: { [Op.gte]: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }
                 }
             }),
@@ -82,42 +84,39 @@ exports.getDashboardStats = async (req, res) => {
                     }
                 }
             }),
-            SystemSetting.findOne({ where: { key: 'MANUAL_TOTAL_REVENUE' } }),
-            SystemSetting.findOne({ where: { key: 'MANUAL_MONTHLY_REVENUE' } }),
             SystemSetting.findOne({ where: { key: 'MANUAL_PENDING_RENEWALS' } }),
             SystemSetting.findOne({ where: { key: 'MANUAL_RENEWALS_THIS_WEEK' } }),
-            SystemSetting.findOne({ where: { key: 'MANUAL_ACTIVE_PAID' } })
+            SystemSetting.findOne({ where: { key: 'MANUAL_ACTIVE_ADS' } })
         ]);
 
-        const totalRev = manualTotalRevenue ? parseFloat(manualTotalRevenue.value) : (subRevenue || 0) / 100;
-        const monthlyRev = manualMonthlyRevenue ? parseFloat(manualMonthlyRevenue.value) : (monthlySubRevenue || 0) / 100;
+        const totalRev = totalSubRevenue || 0;
+        const monthlyRev = currentMonthRevenue || 0;
         const pendingRen = manualPendingRenewals ? parseInt(manualPendingRenewals.value) : pendingSubsCount;
-        const renThisWeek = manualRenewalsThisWeek ? parseInt(manualRenewalsThisWeek.value) : renewalsThisWeek;
-        const activePaid = manualActivePaid ? parseInt(manualActivePaid.value) : activePaidCount;
+        const renThisWeek = manualRenewalsThisWeek ? parseInt(manualRenewalsThisWeek.value) : renewalsThisWeekCount;
+        const activePaid = activePaidCount;
+        const activeAds = manualActiveAds ? parseInt(manualActiveAds.value) : adCount;
 
         return res.json({
             users: userCount,
             leads: leadCount,
-            ads: adCount,
-            revenue: parseFloat(revenueData[0]?.totalRevenue || 0),
-            spent: parseFloat(revenueData[0]?.totalSpent || 0),
+            ads: activeAds,
+            revenue: parseFloat(adsStats[0]?.totalRevenue || 0),
+            spent: parseFloat(adsStats[0]?.totalSpent || 0),
             videos: videoCount,
             testimonials: testimonialCount,
             services: serviceCount,
             activeUsers: recentActiveUsers,
             pendingApprovals: pendingSubsCount,
             activePaidClients: activePaid,
-            freeUsers: freeUserCount,
-            expiredUsers: expiredCount,
+            freeUsers: freeUsersCount,
+            expiredUsers: expiredUsersCount,
             totalSubscriptionRevenue: totalRev,
             monthlySubscriptionRevenue: monthlyRev,
             renewalsThisWeek: renThisWeek,
             pendingRenewals: pendingRen,
-            manualTotalRevenue: manualTotalRevenue?.value || "",
-            manualMonthlyRevenue: manualMonthlyRevenue?.value || "",
             manualPendingRenewals: manualPendingRenewals?.value || "",
             manualRenewalsThisWeek: manualRenewalsThisWeek?.value || "",
-            manualActivePaid: manualActivePaid?.value || ""
+            manualActiveAds: manualActiveAds?.value || ""
         });
     } catch (err) {
         console.error('Get dashboard stats error:', err);
