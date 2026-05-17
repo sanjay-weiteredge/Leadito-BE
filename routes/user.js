@@ -15,7 +15,10 @@ router.use(userAuth);
 const { upload } = require('../utils/s3');
 
 router.get('/user/profile', ctrl.getProfile);
-router.put('/user/profile', upload.single('logo'), ctrl.updateProfile);
+// Fields-only update: send as JSON, no file
+router.put('/user/profile', upload.none(), ctrl.updateProfile);
+// Logo-only update: send as multipart/form-data with 'logo' file
+router.put('/user/profile/logo', upload.single('logo'), ctrl.updateProfile);
 router.post('/user/onboard', upload.single('logo'), ctrl.onboardUser);
 
 router.get('/ads-results', ctrl.getAdsResults);
