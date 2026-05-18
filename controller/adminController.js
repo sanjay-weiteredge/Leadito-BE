@@ -570,10 +570,45 @@ exports.deactivateUser = async (req, res) => {
 
 exports.toggleUserStatus = async (req, res) => {
     try {
-        const user = await User.findByPk(req.params.id);
+        const user = await User.findByPk(req.params.id, {
+            include: [{ model: Subscription, as: 'subscriptions', order: [['createdAt', 'DESC']], limit: 1 }]
+        });
         if (!user) return res.status(404).json({ message: 'User not found' });
 
         const newState = !user.isActive;
+
+        // If reactivating, ensure they have a valid subscription
+        if (newState) {
+            const latestSub = user.subscriptions?.[0];
+            const now = new Date().toISOString().split('T')[0];
+            const isExpired = latestSub && latestSub.expiryDate < now;
+
+            if (!latestSub || isExpired || latestSub.status !== 'active') {
+                // Find a plan to use (previous plan or first available)
+                let planId = latestSub?.planId;
+                if (!planId) {
+                    const firstPlan = await Plan.findOne({ where: { isActive: true }, order: [['price', 'ASC']] });
+                    if (firstPlan) planId = firstPlan.id;
+                }
+
+                if (planId) {
+                    const plan = await Plan.findByPk(planId);
+                    const startDate = new Date();
+                    const expiryDate = new Date();
+                    expiryDate.setDate(expiryDate.getDate() + (plan.durationDays || 30));
+
+                    await Subscription.create({
+                        userId: user.id,
+                        planId: plan.id,
+                        status: 'active',
+                        amount: plan.price,
+                        startDate: startDate.toISOString().split('T')[0],
+                        expiryDate: expiryDate.toISOString().split('T')[0],
+                    });
+                }
+            }
+        }
+
         await user.update({ isActive: newState });
 
         return res.json({
